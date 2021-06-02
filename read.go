@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -86,4 +87,13 @@ func main() {
 
 	// 必要な部分だけを切り出す
 	_ = io.LimitReader(reader, 16)
+
+	// 32ビットのビッグエンディアンのデータ(10000)
+	data := []byte{0x0, 0x0, 0x27, 0x10}
+	var i int32
+	// エンディアン変換
+	if err := binary.Read(bytes.NewReader(data), binary.BigEndian, &i); err != nil {
+		return
+	}
+	fmt.Printf("data: %d\n", i)
 }
