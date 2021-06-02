@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -68,4 +69,18 @@ func main() {
 	if _, err := io.Copy(os.Stdout, res.Body); err != nil {
 		return
 	}
+
+	// 空のバッファ(実体)
+	var _ bytes.Buffer
+	// バイト列で初期化
+	_ = bytes.NewBuffer([]byte{0x10, 0x20, 0x30})
+	// 文字列で初期化
+	_ = bytes.NewBufferString("init")
+
+	// bytes.Readerはbytes.NewReaderで作成
+	_ = bytes.NewReader([]byte{0x10, 0x20, 0x30})
+	_ = bytes.NewReader([]byte("cast string to byte"))
+
+	// strings.Readerはstrings.NewReader()関数で作成
+	_ = strings.NewReader("string")
 }
