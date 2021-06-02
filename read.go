@@ -83,4 +83,7 @@ func main() {
 
 	// strings.Readerはstrings.NewReader()関数で作成
 	_ = strings.NewReader("string")
+
+	// 必要な部分だけを切り出す
+	_ = io.LimitReader(reader, 16)
 }
