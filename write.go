@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
+	"compress/gzip"
 	"fmt"
 	"io"
 	"net"
@@ -46,6 +48,47 @@ func main() {
 		panic(err)
 	}
 	if err := req.Write(conn); err != nil {
+		return
+	}
+
+	file, err := os.Create("multiwriter.log")
+	if err != nil {
+		panic(err)
+	}
+	writer := io.MultiWriter(file, os.Stdout)
+	if _, err := io.WriteString(writer, "io.MultiWriter example\n"); err != nil {
+		return
+	}
+
+	gz, err := os.Create("test.log.gz")
+	if err != nil {
+		panic(err)
+	}
+
+	// 書き込まれたデータをgzip圧縮してos.Fileに中継する
+	gWriter := gzip.NewWriter(gz)
+	gWriter.Header.Name = "test.log"
+	if _, err := io.WriteString(writer, "gizp.Writer example\n"); err != nil {
+		return
+	}
+	if err := gWriter.Close(); err != nil {
+		return
+	}
+
+	// 出力結果を一時的に貯めておいてある分量ごとにまとめて書き出すbufio.Writerという構造体もある
+	// Flush()メソッドを呼ぶと後続のio.Writerに書き出す(他の言語のバッファ付き出力)
+	// Flush()を自動で呼び出す場合にはバッファサイズ指定のNewWriteSize(os.Stdout, SIZE)関数でbufio.Writerを作成する
+	buf := bufio.NewWriter(os.Stdout)
+	if _, err := buf.WriteString("bufio.Writer "); err != nil {
+		return
+	}
+	if err := buf.Flush(); err != nil {
+		return
+	}
+	if _, err := buf.WriteString("example\n"); err != nil {
+		return
+	}
+	if err := buf.Flush(); err != nil {
 		return
 	}
 }
