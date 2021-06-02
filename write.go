@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 )
 
 func main() {
@@ -19,4 +20,8 @@ func main() {
 	if _, err := io.WriteString(&buffer, "bytes.Buffer example\n"); err != nil {
 		return
 	}
+
+	var builder strings.Builder
+	builder.Write([]byte("strings.Builder example\n"))
+	fmt.Println(builder.String())
 }
