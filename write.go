@@ -4,12 +4,14 @@ import (
 	"bufio"
 	"bytes"
 	"compress/gzip"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 )
 
 func main() {
@@ -89,6 +91,32 @@ func main() {
 		return
 	}
 	if err := buf.Flush(); err != nil {
+		return
+	}
+
+	if _, err := fmt.Fprintf(os.Stdout, "Write with os.Stdout at %v\n", time.Now()); err != nil {
+		return
+	}
+
+	// jsonを整形してコンソール(io.Writer)に書き出す
+	encoder := json.NewEncoder(os.Stdout)
+	encoder.SetIndent("", "    ")
+	if err := encoder.Encode(map[string]string{
+		"example": "encoding/json",
+		"hello": "world",
+	}); err != nil {
+		return
+	}
+
+	// net/httpパッケージのRequest構造体(io.Writerに書き出すメソッドを持つ、用途が限定された構造体)
+	// リクエストを送るとき、レスポンスを返すときに情報をパースするのに使える
+	// この構造体のWrite()を使うケースはTransfer-Encoding: chunkedでチャンクに分けて送信したり、プロトコルのアップグレードで別のプロトコルと併用するようなHTTPリクエストを送る時に使う
+	request, err := http.NewRequest("GET", "http://ascii.jp", nil)
+	if err != nil {
+		return
+	}
+	request.Header.Set("X-TEST", "can add header")
+	if err := request.Write(os.Stdout); err != nil {
 		return
 	}
 }
