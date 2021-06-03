@@ -3,11 +3,9 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"net/http/httputil"
-	"strings"
 )
 
 func main() {
@@ -46,43 +44,74 @@ func main() {
 	*/
 
 	// TCPの機能(net.Conn)だけを使ってHTTPによる通信をする
-	listener, err := net.Listen("tcp", "localhost:8888")
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println("Server is running at localhost:8888")
-	for {
-		conn, err := listener.Accept()
+	/*
+		listener, err := net.Listen("tcp", "localhost:8888")
 		if err != nil {
 			panic(err)
 		}
-		go func() {
-			fmt.Printf("Accept %v\n", conn.RemoteAddr())
-			request, err := http.ReadRequest(
-				bufio.NewReader(conn),
-			)
+		fmt.Println("Server is running at localhost:8888")
+		for {
+			conn, err := listener.Accept()
 			if err != nil {
 				panic(err)
 			}
-			dump, err := httputil.DumpRequest(request, true)
-			if err != nil {
-				panic(err)
-			}
-			fmt.Println(string(dump))
-			response := http.Response{
-				StatusCode: http.StatusOK,
-				ProtoMajor: 1,
-				ProtoMinor: 1,
-				Body: ioutil.NopCloser(
-					strings.NewReader("Hello World\n"),
-				),
-			}
-			if err := response.Write(conn); err != nil {
-				panic(err)
-			}
-			if err := conn.Close(); err != nil {
-				panic(err)
-			}
-		}()
+			go func() {
+				fmt.Printf("Accept %v\n", conn.RemoteAddr())
+				request, err := http.ReadRequest(
+					bufio.NewReader(conn),
+				)
+				if err != nil {
+					panic(err)
+				}
+				dump, err := httputil.DumpRequest(request, true)
+				if err != nil {
+					panic(err)
+				}
+				fmt.Println(string(dump))
+				response := http.Response{
+					StatusCode: http.StatusOK,
+					ProtoMajor: 1,
+					ProtoMinor: 1,
+					Body: ioutil.NopCloser(
+						strings.NewReader("Hello World\n"),
+					),
+				}
+				if err := response.Write(conn); err != nil {
+															   panic(err)
+															   }
+				if err := conn.Close(); err != nil {
+					panic(err)
+				}
+			}()
+		}
+	*/
+
+	// TCPソケットを使ったHTTPクライアント
+	conn, err := net.Dial("tcp", "ascii.jp:80")
+	if err != nil {
+		panic(err)
 	}
+	request, err := http.NewRequest(
+		"GET",
+		"ascii.jp:80",
+		nil,
+	)
+	if err != nil {
+		panic(err)
+	}
+	if err := request.Write(conn); err != nil {
+		panic(err)
+	}
+	response, err := http.ReadResponse(
+		bufio.NewReader(conn),
+		request,
+	)
+	if err != nil {
+		panic(err)
+	}
+	dump, err := httputil.DumpResponse(response, true)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(string(dump))
 }
