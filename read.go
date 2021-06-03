@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"io/ioutil"
 	"net"
@@ -110,6 +111,35 @@ func main() {
 	for _, chunk := range chunks {
 		dumpChunk(chunk)
 	}
+
+	newFile, err := os.Create("secret.png")
+	if err != nil {
+		panic(err)
+	}
+	defer func() {
+		if err := newFile.Close(); err != nil {
+			panic(err)
+		}
+	}()
+	chunks = readChunks(file)
+	// シグニチャ書き込み
+	if _, err := io.WriteString(newFile, "\x89PNG\r\n\x1a\n"); err != nil {
+		panic(err)
+	}
+	// 先頭に必要なIHDRチャンクを書き込み
+	if _, err := io.Copy(newFile, chunks[0]); err != nil {
+		return
+	}
+	// テキストチャンクを追加
+	if _, err := io.Copy(newFile, textChunk("ASCII PROGRAMMING++")); err != nil {
+		return
+	}
+	for _, chunk := range chunks[1:] {
+		if _, err := io.Copy(newFile, chunk); err != nil {
+			return
+		}
+	}
+
 }
 
 func dumpChunk(chunk io.Reader) {
@@ -141,4 +171,24 @@ func readChunks(file *os.File) []io.Reader {
 		offset, _ = file.Seek(int64(length+8), 1)
 	}
 	return chunks
+}
+
+// binary.Write()による長さの書き込み、次にチャンク名の書き込み、本体の書き込み、最後にCRCの計算と、binary.Write()による書き込み
+func textChunk(text string) io.Reader {
+	byteData := []byte(text)
+	var buffer bytes.Buffer
+	if err := binary.Write(&buffer, binary.BigEndian, int32(len(byteData))); err != nil {
+		panic(err)
+	}
+	buffer.WriteString("tExt")
+	buffer.Write(byteData)
+	// CRCを計算して追加
+	crc := crc32.NewIEEE()
+	if _, err := io.WriteString(crc, "tExt"); err != nil {
+		panic(err)
+	}
+	if err := binary.Write(&buffer, binary.BigEndian, crc.Sum32()); err != nil {
+		panic(err)
+	}
+	return &buffer
 }
