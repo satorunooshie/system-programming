@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 )
 
@@ -55,6 +58,15 @@ func main() {
 	// 終了を待つ
 	<-ctx.Done()
 	fmt.Println("all tasks are finished")
+
+	// サイズが1より大きいチャネルを作成
+	signals := make(chan os.Signal, 1)
+	// SIGINT(Ctr+C)を受け取る
+	signal.Notify(signals, syscall.SIGINT)
+	// シグナルが来るまで待つ
+	fmt.Println("Waiting SIGINT (Ctr+C)")
+	<-signals
+	fmt.Println("SIGINT arrived")
 }
 
 func sub() {
