@@ -97,7 +97,7 @@ func main() {
 	}
 	fmt.Printf("data: %d\n", i)
 
-	png, err := os.Open("xxx.png")
+	png, err := os.Open("img.png")
 	if err != nil {
 		panic(err)
 	}
