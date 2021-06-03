@@ -191,6 +191,16 @@ func main() {
 		}
 		fmt.Println(line[2], line[7:])
 	}
+
+	header := bytes.NewBufferString("----- HEADER -----\n")
+	content := bytes.NewBufferString("Example of io.MultiReader\n")
+	footer := bytes.NewBufferString("----- FOOTER -----\n")
+
+	multiReader := io.MultiReader(header, content, footer)
+	// 全てのreaderをつなげた出力を表示
+	if _, err := io.Copy(os.Stdout, multiReader); err != nil {
+		panic(err)
+	}
 }
 
 func dumpChunk(chunk io.Reader) {
