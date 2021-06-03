@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"time"
@@ -41,6 +42,19 @@ func main() {
 			}
 		}
 	*/
+
+	// コンテキストは深いネストの中、あるいは派生ジョブなどがあって複雑なロジックの中でも正しく終了やキャンセル、タイムアウトが実装できるようにする仕組み
+	fmt.Println("start sub2()")
+	// 終了を受け取るための終了関数つきコンテキスト
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		fmt.Println("sub2() is finished")
+		// 終了を通知
+		cancel()
+	}()
+	// 終了を待つ
+	<-ctx.Done()
+	fmt.Println("all tasks are finished")
 }
 
 func sub() {
