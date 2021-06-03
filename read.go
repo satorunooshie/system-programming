@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
+	"encoding/csv"
 	"fmt"
 	"hash/crc32"
 	"io"
@@ -174,6 +175,22 @@ func main() {
 	fmt.Printf("i=%#v f=%#v g=%#v s=%#v\n", j, f, g, s)
 	// 任意のデータ区切りをフォーマット文字列に設定する
 	// fmt.Fscanf(reader, "%v, %v, %v, %v", &j, &f, &g, &s)
+
+	var csvSource =
+	 	`1,13101,"100 ",100003,"tokyo","chiyoda","hitotsubashi","東京都","千代田区","一ツ橋",1,0,1,0,0,0
+		 2,13101,"100 ",100003,"tokyo","chiyoda","hitotsubashi","東京都","千代田区","一ツ橋",1,0,1,0,0,0
+		 3,13101,"100 ",100003,"tokyo","chiyoda","hitotsubashi","東京都","千代田区","一ツ橋",1,0,1,0,0,0
+		 4,13101,"100 ",100003,"tokyo","chiyoda","hitotsubashi","東京都","千代田区","一ツ橋",1,0,1,0,0,0`
+	// csv.Readerはio.Readerを受け取る
+	csvReader := csv.NewReader(strings.NewReader(csvSource))
+	for {
+		// ReadAll()で配列になったものを一度に返せる
+		line, err := csvReader.Read()
+		if err == io.EOF {
+			break
+		}
+		fmt.Println(line[2], line[7:])
+	}
 }
 
 func dumpChunk(chunk io.Reader) {
