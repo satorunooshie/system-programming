@@ -1,8 +1,13 @@
 package main
 
 import (
-	"log"
+	"bufio"
+	"fmt"
+	"io/ioutil"
 	"net"
+	"net/http"
+	"net/http/httputil"
+	"strings"
 )
 
 func main() {
@@ -18,23 +23,66 @@ func main() {
 			log.Println(err)
 			return
 		}
-	 */
+	*/
 
 	// 最小限のTCPサーバー
 	// 一度で終了しないためにAccept()を何度も繰り返し呼ぶ
-	ln, err := net.Listen("tcp", ":8080")
+	/*
+		ln, err := net.Listen("tcp", ":8080")
+		if err != nil {
+			panic(err)
+		}
+		for {
+			_, err := ln.Accept()
+			if err != nil {
+				log.Println(err)
+				return
+			}
+			// 1リクエストの処理中にほかのリクエストのAccept()が行えるように非同期にレスポンスを取得する
+			go func() {
+				// connを使ったやりとり
+			}()
+		}
+	*/
+
+	// TCPの機能(net.Conn)だけを使ってHTTPによる通信をする
+	listener, err := net.Listen("tcp", "localhost:8888")
 	if err != nil {
 		panic(err)
 	}
+	fmt.Println("Server is running at localhost:8888")
 	for {
-		_, err := ln.Accept()
+		conn, err := listener.Accept()
 		if err != nil {
-			log.Println(err)
-			return
+			panic(err)
 		}
-		// 1リクエストの処理中にほかのリクエストのAccept()が行えるように非同期にレスポンスを取得する
 		go func() {
-			// connを使ったやりとり
+			fmt.Printf("Accept %v\n", conn.RemoteAddr())
+			request, err := http.ReadRequest(
+				bufio.NewReader(conn),
+			)
+			if err != nil {
+				panic(err)
+			}
+			dump, err := httputil.DumpRequest(request, true)
+			if err != nil {
+				panic(err)
+			}
+			fmt.Println(string(dump))
+			response := http.Response{
+				StatusCode: http.StatusOK,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+				Body: ioutil.NopCloser(
+					strings.NewReader("Hello World\n"),
+				),
+			}
+			if err := response.Write(conn); err != nil {
+				panic(err)
+			}
+			if err := conn.Close(); err != nil {
+				panic(err)
+			}
 		}()
 	}
 }
