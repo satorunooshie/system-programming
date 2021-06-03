@@ -152,6 +152,13 @@ func dumpChunk(chunk io.Reader) {
 		return
 	}
 	fmt.Printf("chunk '%v', (%d bytes)\n", string(buffer), length)
+	if bytes.Equal(buffer, []byte("tExt")) {
+		rawText := make([]byte, length)
+		if _, err := chunk.Read(rawText); err != nil {
+			return
+		}
+		fmt.Println(string(rawText))
+	}
 }
 
 func readChunks(file *os.File) []io.Reader {
