@@ -161,6 +161,19 @@ func main() {
 	for scanner.Scan() {
 		fmt.Printf("%#v\n", scanner.Text())
 	}
+
+	// fmt.Fscan()は一つ目の引数にio.Reader、それ以降に変数のポインタを渡すと変数にデータを書き込める
+	var fsource = "123 1.234 1.0e4 test"
+	freader := strings.NewReader(fsource)
+	var j int
+	var f, g float64
+	var s string
+	if _, err := fmt.Fscan(freader, &j, &f, &g, &s); err != nil {
+		panic(err)
+	}
+	fmt.Printf("i=%#v f=%#v g=%#v s=%#v\n", j, f, g, s)
+	// 任意のデータ区切りをフォーマット文字列に設定する
+	// fmt.Fscanf(reader, "%v, %v, %v, %v", &j, &f, &g, &s)
 }
 
 func dumpChunk(chunk io.Reader) {
