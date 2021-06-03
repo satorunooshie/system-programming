@@ -201,6 +201,16 @@ func main() {
 	if _, err := io.Copy(os.Stdout, multiReader); err != nil {
 		panic(err)
 	}
+
+	// 読んだ内容をbufferにも入れたのでbufferから同じ内容が取り出せる
+	var buffer bytes.Buffer
+	teeReader := io.TeeReader(bytes.NewBufferString("Example of io.TeeReader\n"), &buffer)
+	// データを読み捨てる
+	if _, err := ioutil.ReadAll(teeReader); err != nil {
+		panic(err)
+	}
+	// けどバッファに残ってる
+	fmt.Println(buffer.String())
 }
 
 func dumpChunk(chunk io.Reader) {
