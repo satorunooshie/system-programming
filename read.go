@@ -140,6 +140,27 @@ func main() {
 		}
 	}
 
+	var source = `
+		一行目
+		二行目
+		三行目
+	`
+	binaryReader := bufio.NewReader(strings.NewReader(source))
+	for {
+		line, err := binaryReader.ReadString('\n')
+		fmt.Printf("%#v\n", line)
+		if err == io.EOF {
+			break
+		}
+	}
+	// 終端を気にせずもっと短く書くならbufio.Scanner()
+	// ただし、bufio.Readerの行の末尾には改行記号が残っているが、bufio.Scannerを使った方の結果では削除されている
+	// デフォルトは改行区切りだが、分割関数を指定することで任意の分割が行える
+	scanner := bufio.NewScanner(strings.NewReader(source))
+	// scanner.Split(bufio.ScanWords)
+	for scanner.Scan() {
+		fmt.Printf("%#v\n", scanner.Text())
+	}
 }
 
 func dumpChunk(chunk io.Reader) {
