@@ -2,14 +2,16 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"compress/gzip"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"net/http/httputil"
-	"os"
 	"strings"
+	"time"
 )
 
 func main() {
@@ -183,7 +185,7 @@ func main() {
 				}
 			}()
 		}
-	 */
+	*/
 
 	// Keep-Alive対応のHTTPクライアント
 	/*
@@ -244,87 +246,178 @@ func main() {
 				break
 			}
 		}
-	 */
+	*/
 
 	// 速度改善(2): 圧縮
 	// パケット伝達の速度は変わらないが、転送を開始してから終了するまでの時間は短くなる
-	sendMessages := []string{
-		"ASCII",
-		"PROGRAMMING",
-		"PLUS",
+	/*
+		sendMessages := []string{
+			"ASCII",
+			"PROGRAMMING",
+			"PLUS",
+		}
+		current := 0
+		var conn net.Conn = nil
+		defer func() {
+			if err := conn.Close(); err != nil {
+				panic(err)
+			}
+		}()
+		// リトライ用にループで全体を囲う
+		for {
+			var err error
+			// まだコネクションを張っていない / エラーでリトライ
+			if conn == nil {
+				// Dialから行ってconnを初期化
+				conn, err = net.Dial("tcp", "ascii.jp:80")
+				if err != nil {
+					panic(err)
+				}
+				fmt.Printf("Access: %d\n", current)
+			}
+			// POSTで文字列を送るリクエストを作成
+			request, err := http.NewRequest(
+				"POST",
+				"http://ascii.jp:80",
+				strings.NewReader(sendMessages[current]),
+			)
+			if err != nil {
+				panic(err)
+			}
+			request.Header.Set("Accept-Encoding", "gzip")
+			if err := request.Write(conn); err != nil {
+				panic(err)
+			}
+			// サーバーから読み込む、timeoutはここでエラーになるのでリトライ
+			response, err := http.ReadResponse(
+				bufio.NewReader(conn),
+				request,
+			)
+			if err != nil {
+				fmt.Println("Retry")
+				conn = nil
+				continue
+			}
+			dump, err := httputil.DumpResponse(response, false)
+			if err != nil {
+							  panic(err)
+							  }
+			fmt.Println(string(dump))
+			defer func() {
+				if err := response.Body.Close(); err != nil {
+					panic(err)
+				}
+			}()
+			if response.Header.Get("Content-Encoding") == "gzip" {
+				reader, err := gzip.NewReader(response.Body)
+				if err != nil {
+					panic(err)
+				}
+				if _, err := io.Copy(os.Stdout, reader); err != nil {
+																		panic(err)
+																		}
+				if err := reader.Close(); err != nil {
+					panic(err)
+				}
+			} else {
+				if _, err := io.Copy(os.Stdout, response.Body); err != nil {
+					return
+				}
+			}
+			// 全部送信完了できていれば終了
+			current++
+			if current == len(sendMessages) {
+				break
+			}
+		}
+	*/
+
+	// gzip圧縮に対応したサーバー
+	// 圧縮にはgzip.NewWriterで作成したio.Writerを使う
+	// 圧縮した内容はbytes.Bufferに書き出している
+	// Content-Lengthヘッダーに圧縮後のボディサイズを指定
+	// ヘッダーは圧縮されていないため少量のデータを通信するほど効率が悪い
+	// HTTPで圧縮されるのはレスポンスのボディだけで、リクエストのボディは圧縮されない
+	// ヘッダーの圧縮はHTTP/2になって初めて導入された
+	listener, err := net.Listen("tcp", "localhost:8888")
+	if err != nil {
+		panic(err)
 	}
-	current := 0
-	var conn net.Conn = nil
+	fmt.Println("Server is running at localhost:8888")
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			panic(err)
+		}
+		go processSession(conn)
+	}
+}
+
+func isGZipAcceptable(request *http.Request) bool {
+	return strings.Index(strings.Join(request.Header["Accept-Encoding"], ","), "gzip") != -1
+}
+
+// 1セッションの処理をする
+func processSession(conn net.Conn) {
+	fmt.Printf("Accept %v\n", conn.RemoteAddr())
 	defer func() {
 		if err := conn.Close(); err != nil {
 			panic(err)
 		}
 	}()
-	// リトライ用にループで全体を囲う
 	for {
-		var err error
-		// まだコネクションを張っていない / エラーでリトライ
-		if conn == nil {
-			// Dialから行ってconnを初期化
-			conn, err = net.Dial("tcp", "ascii.jp:80")
-			if err != nil {
-				panic(err)
+		if err := conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+			panic(err)
+		}
+		request, err := http.ReadRequest(bufio.NewReader(conn))
+		if err != nil {
+			neterr, ok := err.(net.Error)
+			if ok && neterr.Timeout() {
+				fmt.Println("Timeout")
+				break
 			}
-			fmt.Printf("Access: %d\n", current)
-		}
-		// POSTで文字列を送るリクエストを作成
-		request, err := http.NewRequest(
-			"POST",
-			"http://ascii.jp:80",
-			strings.NewReader(sendMessages[current]),
-		)
-		if err != nil {
+			if err == io.EOF {
+				break
+			}
 			panic(err)
 		}
-		request.Header.Set("Accept-Encoding", "gzip")
-		if err := request.Write(conn); err != nil {
-			panic(err)
-		}
-		// サーバーから読み込む、timeoutはここでエラーになるのでリトライ
-		response, err := http.ReadResponse(
-			bufio.NewReader(conn),
-			request,
-		)
-		if err != nil {
-			fmt.Println("Retry")
-			conn = nil
-			continue
-		}
-		dump, err := httputil.DumpResponse(response, false)
+		dump, err := httputil.DumpRequest(request, true)
 		if err != nil {
 			panic(err)
 		}
 		fmt.Println(string(dump))
-		defer func() {
-			if err := response.Body.Close(); err != nil {
-				panic(err)
-			}
-		}()
-		if response.Header.Get("Content-Encoding") == "gzip" {
-			reader, err := gzip.NewReader(response.Body)
-			if err != nil {
-				panic(err)
-			}
-			if _, err := io.Copy(os.Stdout, reader); err != nil {
-				panic(err)
-			}
-			if err := reader.Close(); err != nil {
-				panic(err)
-			}
-		} else {
-			if _, err := io.Copy(os.Stdout, response.Body); err != nil {
-				return
-			}
+		response := http.Response{
+			StatusCode: http.StatusOK,
+			ProtoMajor: 1,
+			ProtoMinor: 1,
+			Header:     make(http.Header),
 		}
-		// 全部送信完了できていれば終了
-		current++
-		if current == len(sendMessages) {
-			break
+		if !isGZipAcceptable(request) {
+			content := "Hello World\n"
+			response.Body = ioutil.NopCloser(
+				strings.NewReader(content),
+			)
+			response.ContentLength = int64(len(content))
+			if err := response.Write(conn); err != nil {
+				panic(err)
+			}
+			return
+		}
+		content := "Hello World(gzipped)\n"
+		// zip
+		var buffer bytes.Buffer
+		writer := gzip.NewWriter(&buffer)
+		if _, err := io.WriteString(writer, content); err != nil {
+			panic(err)
+		}
+		if err := writer.Close(); err != nil {
+			panic(err)
+		}
+		response.Body = ioutil.NopCloser(&buffer)
+		response.ContentLength = int64(buffer.Len())
+		response.Header.Set("Content-Encoding", "gzip")
+		if err := response.Write(conn); err != nil {
+			panic(err)
 		}
 	}
 }
