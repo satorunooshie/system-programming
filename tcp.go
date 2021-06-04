@@ -339,6 +339,25 @@ func main() {
 	// ヘッダーは圧縮されていないため少量のデータを通信するほど効率が悪い
 	// HTTPで圧縮されるのはレスポンスのボディだけで、リクエストのボディは圧縮されない
 	// ヘッダーの圧縮はHTTP/2になって初めて導入された
+	/*
+		listener, err := net.Listen("tcp", "localhost:8888")
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println("Server is running at localhost:8888")
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				panic(err)
+			}
+			go processSession(conn)
+		}
+	 */
+
+	// 速度改善(3): チャンク形式のボディ送信
+	// 1度のリクエストに対して1回で送ると、全部のデータが用意できるまでレスポンスのスタートが遅れ、結果として実行効率が下がる
+	// チャンク形式ではヘッダーに送信データのサイズを書かない代わりに、Transfer-Encoding: chunkedというヘッダーを付与
+	// ボディは16進数のブロックのデータサイズの後ろにそのバイト数分のデータブロックが続く、通信の完了はサイズとして0を返すことで伝える
 	listener, err := net.Listen("tcp", "localhost:8888")
 	if err != nil {
 		panic(err)
@@ -349,7 +368,7 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		go processSession(conn)
+		go processSessionWithChunk(conn)
 	}
 }
 
@@ -371,8 +390,8 @@ func processSession(conn net.Conn) {
 		}
 		request, err := http.ReadRequest(bufio.NewReader(conn))
 		if err != nil {
-			neterr, ok := err.(net.Error)
-			if ok && neterr.Timeout() {
+			netErr, ok := err.(net.Error)
+			if ok && netErr.Timeout() {
 				fmt.Println("Timeout")
 				break
 			}
@@ -417,6 +436,58 @@ func processSession(conn net.Conn) {
 		response.ContentLength = int64(buffer.Len())
 		response.Header.Set("Content-Encoding", "gzip")
 		if err := response.Write(conn); err != nil {
+			panic(err)
+		}
+	}
+}
+
+func processSessionWithChunk(conn net.Conn) {
+	var contents = []string{
+		"これは、昔私が小さい時に、村の茂平というおじいさんから聞いたお話です。",
+		"昔は、私たちの村の近くの、中山というところに小さなお城があって、",
+		"中山さまというお殿様が、おられたそうです。",
+		"その中山から、少し離れた山の中に、「ごんぎつね」という狐がいました。",
+		"ごんは、ひとりぼっちの小狐で、シダのいっぱい茂った森の中に穴を掘って住んでいました。",
+		"そして、夜でも昼でも、辺の村に出てきて悪戯ばかりしました。",
+	}
+	fmt.Printf("Accept %v\n", conn.RemoteAddr())
+	defer func() {
+		if err := conn.Close(); err != nil {
+			panic(err)
+		}
+	}()
+	for {
+		request, err := http.ReadRequest(bufio.NewReader(conn))
+		if err != nil {
+			if err != io.EOF {
+				panic(err)
+			}
+			break
+		}
+		dump, err := httputil.DumpRequest(request, true)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println(string(dump))
+		if _, err := fmt.Fprintf(
+			conn,
+			strings.Join([]string{
+				"HTTP/1.1 200 OK",
+				"Content-Type: text/plain",
+				"Transfer-Encoding: chunked",
+				"",
+				"",
+			}, "\r\n"),
+		); err != nil {
+			panic(err)
+		}
+		for _, content := range contents {
+			b := []byte(content)
+			if _, err := fmt.Fprintf(conn, "%x\r\n%s\r\n", len(b), content); err != nil {
+				panic(err)
+			}
+		}
+		if _, err := fmt.Fprintf(conn, "0\r\n\r\n"); err != nil {
 			panic(err)
 		}
 	}
