@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -352,23 +353,87 @@ func main() {
 			}
 			go processSession(conn)
 		}
-	 */
+	*/
 
 	// 速度改善(3): チャンク形式のボディ送信
 	// 1度のリクエストに対して1回で送ると、全部のデータが用意できるまでレスポンスのスタートが遅れ、結果として実行効率が下がる
 	// チャンク形式ではヘッダーに送信データのサイズを書かない代わりに、Transfer-Encoding: chunkedというヘッダーを付与
 	// ボディは16進数のブロックのデータサイズの後ろにそのバイト数分のデータブロックが続く、通信の完了はサイズとして0を返すことで伝える
-	listener, err := net.Listen("tcp", "localhost:8888")
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println("Server is running at localhost:8888")
-	for {
-		conn, err := listener.Accept()
+	/*
+		listener, err := net.Listen("tcp", "localhost:8888")
 		if err != nil {
 			panic(err)
 		}
-		go processSessionWithChunk(conn)
+		fmt.Println("Server is running at localhost:8888")
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				panic(err)
+			}
+			go processSessionWithChunk(conn)
+		}
+	*/
+
+	// チャンク形式のクライアントの実装
+	conn, err := net.Dial("tcp", "ascii.jp:80")
+	if err != nil {
+		panic(err)
+	}
+	defer func() {
+		if err := conn.Close(); err != nil {
+			panic(err)
+		}
+	}()
+	request, err := http.NewRequest(
+		"GET",
+		"ascii.jp:80",
+		nil,
+	)
+	if err != nil {
+		panic(err)
+	}
+	if err := request.Write(conn); err != nil {
+		panic(err)
+	}
+	reader := bufio.NewReader(conn)
+	response, err := http.ReadResponse(reader, request)
+	if err != nil {
+		panic(err)
+	}
+	dump, err := httputil.DumpResponse(response, false)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(string(dump))
+	if len(response.TransferEncoding) < 1 || response.TransferEncoding[0] != "chunked" {
+		panic("wrong transfer encoding")
+	}
+	for {
+		sizeStr, err := reader.ReadBytes('\n')
+		if err == io.EOF {
+			break
+		}
+		// 16進数のサイズをパース。サイズが0ならクローズ
+		size, err := strconv.ParseInt(
+			string(sizeStr[:len(sizeStr)-2]),
+			16,
+			64,
+		)
+		if size == 0 {
+			break
+		}
+		if err != nil {
+			panic(err)
+		}
+		// サイズ数分バッファを確保して読み込み
+		line := make([]byte, int(size))
+		if _, err := io.ReadFull(reader, line); err != nil {
+			panic(err)
+		}
+		if _, err := reader.Discard(2); err != nil {
+			panic(err)
+		}
+		fmt.Printf("  %d bytes: %s\n", size, string(line))
 	}
 }
 
