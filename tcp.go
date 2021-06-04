@@ -2,10 +2,13 @@ package main
 
 import (
 	"bufio"
+	"compress/gzip"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"os"
 	"strings"
 )
 
@@ -181,7 +184,70 @@ func main() {
 			}()
 		}
 	 */
+
 	// Keep-Alive対応のHTTPクライアント
+	/*
+		sendMessages := []string{
+			"ASCII",
+			"PROGRAMMING",
+			"PLUS",
+		}
+		current := 0
+		var conn net.Conn = nil
+		defer func() {
+			if err := conn.Close(); err != nil {
+				panic(err)
+			}
+		}()
+		// リトライ用にループで全体を囲う
+		for {
+			var err error
+			// まだコネクションを張っていない / エラーでリトライ
+			if conn == nil {
+				// Dialから行ってconnを初期化
+				conn, err = net.Dial("tcp", "ascii.jp:80")
+				if err != nil {
+					panic(err)
+				}
+				fmt.Printf("Access: %d\n", current)
+			}
+			// POSTで文字列を送るリクエストを作成
+			request, err := http.NewRequest(
+				"POST",
+				"http://ascii.jp:80",
+				strings.NewReader(sendMessages[current]),
+			)
+			if err != nil {
+				panic(err)
+			}
+			if err := request.Write(conn); err != nil {
+				panic(err)
+			}
+			// サーバーから読み込む、timeoutはここでエラーになるのでリトライ
+			response, err := http.ReadResponse(
+				bufio.NewReader(conn),
+				request,
+			)
+			if err != nil {
+				fmt.Println("Retry")
+				conn = nil
+				continue
+			}
+			dump, err := httputil.DumpResponse(response, true)
+			if err != nil {
+							  panic(err)
+							  }
+			fmt.Println(string(dump))
+			// 全部送信完了できていれば終了
+			current++
+			if current == len(sendMessages) {
+				break
+			}
+		}
+	 */
+
+	// 速度改善(2): 圧縮
+	// パケット伝達の速度は変わらないが、転送を開始してから終了するまでの時間は短くなる
 	sendMessages := []string{
 		"ASCII",
 		"PROGRAMMING",
@@ -215,6 +281,7 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
+		request.Header.Set("Accept-Encoding", "gzip")
 		if err := request.Write(conn); err != nil {
 			panic(err)
 		}
@@ -228,11 +295,32 @@ func main() {
 			conn = nil
 			continue
 		}
-		dump, err := httputil.DumpResponse(response, true)
+		dump, err := httputil.DumpResponse(response, false)
 		if err != nil {
 			panic(err)
 		}
 		fmt.Println(string(dump))
+		defer func() {
+			if err := response.Body.Close(); err != nil {
+				panic(err)
+			}
+		}()
+		if response.Header.Get("Content-Encoding") == "gzip" {
+			reader, err := gzip.NewReader(response.Body)
+			if err != nil {
+				panic(err)
+			}
+			if _, err := io.Copy(os.Stdout, reader); err != nil {
+				panic(err)
+			}
+			if err := reader.Close(); err != nil {
+				panic(err)
+			}
+		} else {
+			if _, err := io.Copy(os.Stdout, response.Body); err != nil {
+				return
+			}
+		}
 		// 全部送信完了できていれば終了
 		current++
 		if current == len(sendMessages) {
