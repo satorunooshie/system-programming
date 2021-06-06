@@ -69,24 +69,54 @@ func main() {
 	// IPv4については先頭4ビットが1110のアドレス(224.0.0.0~239.255.255.255)がマルチキャスト用
 	// IPv6については先頭8ビットが11111111のアドレスがマルチキャスト用
 	// IPv4では224.0.0.0~224.0.0.255の範囲がローカル用として予約されている
-	fmt.Println("Start tick server at 224.0.0.1:9999")
-	conn, err := net.Dial("udp", "224.0.0.1:9999")
+	/*
+		fmt.Println("Start tick server at 224.0.0.1:9999")
+		conn, err := net.Dial("udp", "224.0.0.1:9999")
+		if err != nil {
+			panic(err)
+		}
+		defer func() {
+			if err := conn.Close(); err != nil {
+				panic(err)
+			}
+		}()
+		start := time.Now()
+		wait := start.Truncate(interval).Add(interval).Sub(start)
+		time.Sleep(wait)
+		ticker := time.Tick(interval)
+		for now := range ticker {
+			if _, err := conn.Write([]byte(now.String())); err != nil {
+				panic(err)
+			}
+			fmt.Println("Tick: ", now.String())
+		}
+	*/
+
+	// クライアント側の実装
+	// UDPのマルチキャストはクライアントがソケットをオープンして待ち受け、そこにサーバーがデータを送信する
+	// TCPではサーバーが起動してクライアントを待ち受けていてリクエストが来たらレスポンスを返す
+	// (多対多通信)クライアント側で複数のネットワーク接続がある時に特定のLAN環境のマルチキャストを受信するにはnet.InterfaceByName("en0")のように書いて、イーサネットのインターフェース情報を取得し、net.ListenMultiCastUDP()関数の第二引数に渡す
+	fmt.Println("Listen tick server at 224.0.0.1:9999")
+	address, err := net.ResolveUDPAddr("udp", "224.0.0.1:9999")
+	if err != nil {
+		panic(err)
+	}
+	listener, err := net.ListenMulticastUDP("udp", nil, address)
 	if err != nil {
 		panic(err)
 	}
 	defer func() {
-		if err := conn.Close(); err != nil {
+		if err := listener.Close(); err != nil {
 			panic(err)
 		}
 	}()
-	start := time.Now()
-	wait := start.Truncate(interval).Add(interval).Sub(start)
-	time.Sleep(wait)
-	ticker := time.Tick(interval)
-	for now := range ticker {
-		if _, err := conn.Write([]byte(now.String())); err != nil {
+	buffer := make([]byte, 1500)
+	for {
+		length, remoteAddress, err := listener.ReadFromUDP(buffer)
+		if err != nil {
 			panic(err)
 		}
-		fmt.Println("Tick: ", now.String())
+		fmt.Printf("Server %v\n", remoteAddress)
+		fmt.Printf("Now    %s\n", string(buffer[:length]))
 	}
 }
