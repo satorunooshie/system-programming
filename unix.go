@@ -3,13 +3,11 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"net/http/httputil"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 // コンピュータの内部でしか使えない代わりに高速な通信が可能でTCP型(ストリーム型)とUDP型(データグラム型)の両方の使い方ができる
@@ -43,47 +41,75 @@ func main() {
 	*/
 
 	// Unixドメインソケット版のHTTPサーバー
-	path := filepath.Join(os.TempDir(), "unixdomainsocket-sample")
-	// 存在しなかったらしなかったで問題ない
-	_ = os.Remove(path)
-	listener, err := net.Listen("unix", path)
-	if err != nil {
-		panic(err)
-	}
-	defer func() {
-		if err := listener.Close(); err != nil {
-			panic(err)
-		}
-	}()
-	fmt.Println("Server is running at " + path)
-	for {
-		conn, err := listener.Accept()
+	/*
+		path := filepath.Join(os.TempDir(), "unixdomainsocket-sample")
+		// 存在しなかったらしなかったで問題ない
+		_ = os.Remove(path)
+		listener, err := net.Listen("unix", path)
 		if err != nil {
 			panic(err)
 		}
-		go func() {
-			fmt.Printf("Accept %v\n", conn.RemoteAddr())
-			request, err := http.ReadRequest(bufio.NewReader(conn))
-			if err != nil {
-				panic(err)
-			}
-			dump, err := httputil.DumpRequest(request, true)
-			if err != nil {
-				panic(err)
-			}
-			fmt.Println(string(dump))
-			response := http.Response{
-				StatusCode: http.StatusOK,
-				ProtoMajor: 1,
-				ProtoMinor: 1,
-				Body:       ioutil.NopCloser(strings.NewReader("Hello World\n")),
-			}
-			if err := response.Write(conn); err != nil {
-				panic(err)
-			}
-			if err := conn.Close(); err != nil {
+		defer func() {
+			if err := listener.Close(); err != nil {
 				panic(err)
 			}
 		}()
+		fmt.Println("Server is running at " + path)
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				panic(err)
+			}
+			go func() {
+				fmt.Printf("Accept %v\n", conn.RemoteAddr())
+				request, err := http.ReadRequest(bufio.NewReader(conn))
+				if err != nil {
+					panic(err)
+				}
+				dump, err := httputil.DumpRequest(request, true)
+				if err != nil {
+					panic(err)
+				}
+				fmt.Println(string(dump))
+				response := http.Response{
+					StatusCode: http.StatusOK,
+					ProtoMajor: 1,
+					ProtoMinor: 1,
+					Body:       ioutil.NopCloser(strings.NewReader("Hello World\n")),
+				}
+				if err := response.Write(conn); err != nil {
+					panic(err)
+				}
+				if err := conn.Close(); err != nil {
+													   panic(err)
+													   }
+			}()
+		}
+	 */
+
+	// Unixドメインソケット版のHTTPクライアント
+	conn, err := net.Dial("unix", filepath.Join(os.TempDir(), "unixdomainsocket-sample"))
+	if err != nil {
+		panic(err)
 	}
+	request, err := http.NewRequest(
+		"GET",
+		"http://localhost:8888",
+		nil,
+	)
+	if err != nil {
+		panic(err)
+	}
+	if err := request.Write(conn); err != nil {
+		panic(err)
+	}
+	response, err := http.ReadResponse(bufio.NewReader(conn), request)
+	if err != nil {
+		panic(err)
+	}
+	dump, err := httputil.DumpResponse(response, true)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(string(dump))
 }
