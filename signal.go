@@ -1,12 +1,16 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
 	"syscall"
 	"time"
+
+	"github.com/lestrrat/go-server-starter/listener"
 )
 
 func main() {
@@ -62,6 +66,34 @@ func main() {
 	}
 	// killの場合はショートカットでも可
 	if err := process.Kill(); err != nil {
+		panic(err)
+	}
+
+	// Server::Starter対応のサーバー実装例(最低限)
+	// 無停止でリスタートするためにはSIGTERMシグナルを受け取ったら新規のリクエストを受付停止し、現在処理中のリクエストが完了するまで待って終了する必要がある
+	signals = make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGTERM)
+	// Server::Starterからもらったソケットを確認
+	listeners, err := listener.ListenAll()
+	if err != nil {
+		panic(err)
+	}
+	// web serverをgoroutineで起動
+	server := http.Server{
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if _, err := fmt.Fprintf(w, "server pid: %d %v\n", os.Getpid(), os.Environ()); err != nil {
+				panic(err)
+			}
+		}),
+	}
+	go func() {
+		if err := server.Serve(listeners[0]); err != nil {
+			panic(err)
+		}
+	}()
+	// SIGTERMを受け取ったら終了させる
+	<-signals
+	if err := server.Shutdown(context.Background()); err != nil {
 		panic(err)
 	}
 }
