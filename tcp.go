@@ -10,7 +10,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -375,65 +374,88 @@ func main() {
 	*/
 
 	// チャンク形式のクライアントの実装
-	conn, err := net.Dial("tcp", "ascii.jp:80")
-	if err != nil {
-		panic(err)
-	}
-	defer func() {
-		if err := conn.Close(); err != nil {
-			panic(err)
-		}
-	}()
-	request, err := http.NewRequest(
-		"GET",
-		"ascii.jp:80",
-		nil,
-	)
-	if err != nil {
-		panic(err)
-	}
-	if err := request.Write(conn); err != nil {
-		panic(err)
-	}
-	reader := bufio.NewReader(conn)
-	response, err := http.ReadResponse(reader, request)
-	if err != nil {
-		panic(err)
-	}
-	dump, err := httputil.DumpResponse(response, false)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(string(dump))
-	if len(response.TransferEncoding) < 1 || response.TransferEncoding[0] != "chunked" {
-		panic("wrong transfer encoding")
-	}
-	for {
-		sizeStr, err := reader.ReadBytes('\n')
-		if err == io.EOF {
-			break
-		}
-		// 16進数のサイズをパース。サイズが0ならクローズ
-		size, err := strconv.ParseInt(
-			string(sizeStr[:len(sizeStr)-2]),
-			16,
-			64,
-		)
-		if size == 0 {
-			break
-		}
+	/*
+		conn, err := net.Dial("tcp", "ascii.jp:80")
 		if err != nil {
 			panic(err)
 		}
-		// サイズ数分バッファを確保して読み込み
-		line := make([]byte, int(size))
-		if _, err := io.ReadFull(reader, line); err != nil {
+		defer func() {
+			if err := conn.Close(); err != nil {
+				panic(err)
+			}
+		}()
+		request, err := http.NewRequest(
+			"GET",
+			"ascii.jp:80",
+			nil,
+		)
+		if err != nil {
 			panic(err)
 		}
-		if _, err := reader.Discard(2); err != nil {
+		if err := request.Write(conn); err != nil {
 			panic(err)
 		}
-		fmt.Printf("  %d bytes: %s\n", size, string(line))
+		reader := bufio.NewReader(conn)
+		response, err := http.ReadResponse(reader, request)
+		if err != nil {
+			panic(err)
+		}
+		dump, err := httputil.DumpResponse(response, false)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println(string(dump))
+		if len(response.TransferEncoding) < 1 || response.TransferEncoding[0] != "chunked" {
+			panic("wrong transfer encoding")
+		}
+		for {
+			sizeStr, err := reader.ReadBytes('\n')
+			if err == io.EOF {
+				break
+			}
+			// 16進数のサイズをパース。サイズが0ならクローズ
+			size, err := strconv.ParseInt(
+				string(sizeStr[:len(sizeStr)-2]),
+				16,
+				64,
+			)
+			if size == 0 {
+				break
+			}
+			if err != nil {
+				panic(err)
+			}
+			// サイズ数分バッファを確保して読み込み
+			line := make([]byte, int(size))
+			if _, err := io.ReadFull(reader, line); err != nil {
+				panic(err)
+			}
+			if _, err := reader.Discard(2); err != nil {
+				panic(err)
+			}
+			fmt.Printf("  %d bytes: %s\n", size, string(line))
+		}
+	*/
+
+	// 速度改善(4): パイプライニング
+	// 送受信を非同期化することでトータルの送信にかかる時間を大幅に減らす方法
+	// パイプライニングのサーバー実装
+	// 1. サーバー側の状態を変更しない安全なメソッド(GET, HEAD)であれば、サーバー側で並列処理を行なっても良い
+	// 2. リクエストの順序でレスポンスを返さなければならない
+	// まず並列処理でレスポンスを書き込むwriteToConn()関数が順序を守ってかけるように先頭から1つずつデータを取り出すための順序生理用のキューとしてバッファ月のチャネルを使う
+	// さらにリクエスト処理が終わるまで待つため、送信データを貯めるバッファなしのチャネルを内部にもう一つ用意している
+	// 待つ側のコードはwriteToCon()の中で、送信側のコードはhandleRequest()の最後にある
+	listener, err := net.Listen("tcp", "localhost:8888")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("Server is running at localhost:8888")
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			panic(err)
+		}
+		go processSessionWithPipelining(conn)
 	}
 }
 
@@ -555,5 +577,76 @@ func processSessionWithChunk(conn net.Conn) {
 		if _, err := fmt.Fprintf(conn, "0\r\n\r\n"); err != nil {
 			panic(err)
 		}
+	}
+}
+
+// 順番に従ってconnに書き出しをする(goroutine)
+func writeToConn(sessionResponses chan chan *http.Response, conn net.Conn) {
+	defer func() {
+		if err := conn.Close(); err != nil {
+			panic(err)
+		}
+	}()
+	// 順番に取り出す
+	for sessionResponse := range sessionResponses {
+		// 選択された仕事が終わるまで待つ
+		response := <-sessionResponse
+		if err := response.Write(conn); err != nil {
+			panic(err)
+		}
+		close(sessionResponse)
+	}
+}
+
+// セッション内のリクエストを処理する
+func handleRequest(request *http.Request, resultReceiver chan *http.Response) {
+	dump, err := httputil.DumpRequest(request, true)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(string(dump))
+	content := "Hello World\n"
+	// セッションを維持するためにKeep-Aliveでないといけない
+	response := &http.Response{
+		StatusCode:    http.StatusOK,
+		ProtoMajor:    1,
+		ProtoMinor:    1,
+		ContentLength: int64(len(content)),
+		Body:          ioutil.NopCloser(strings.NewReader(content)),
+	}
+	// 処理が終わったらチャネルに書き込み、ブロックされていたwriteToConnの処理を再始動する
+	resultReceiver <- response
+}
+
+// セッション1つを処理
+func processSessionWithPipelining(conn net.Conn) {
+	fmt.Printf("Accept %v\n", conn.RemoteAddr())
+	// セッション内のリクエストを順に処理するためのチャネル
+	sessionResponses := make(chan chan *http.Response, 50)
+	defer close(sessionResponses)
+	// レスポンスを直列化してソケットに書き出す専用のgoroutine
+	go writeToConn(sessionResponses, conn)
+	reader := bufio.NewReader(conn)
+	for {
+		// レスポンスを受け取ってセッションのキューに入れる
+		if err := conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+			panic(err)
+		}
+		request, err := http.ReadRequest(reader)
+		if err != nil {
+			netErr, ok := err.(net.Error)
+			if ok && netErr.Timeout() {
+				fmt.Println("Timeout")
+				break
+			}
+			if err == io.EOF {
+				break
+			}
+			panic(err)
+		}
+		sessionResponse := make(chan *http.Response)
+		sessionResponses <- sessionResponse
+		// 非同期でレスポンスを実行
+		go handleRequest(request, sessionResponse)
 	}
 }
