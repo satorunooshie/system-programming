@@ -445,17 +445,82 @@ func main() {
 	// まず並列処理でレスポンスを書き込むwriteToConn()関数が順序を守ってかけるように先頭から1つずつデータを取り出すための順序生理用のキューとしてバッファ月のチャネルを使う
 	// さらにリクエスト処理が終わるまで待つため、送信データを貯めるバッファなしのチャネルを内部にもう一つ用意している
 	// 待つ側のコードはwriteToCon()の中で、送信側のコードはhandleRequest()の最後にある
-	listener, err := net.Listen("tcp", "localhost:8888")
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println("Server is running at localhost:8888")
-	for {
-		conn, err := listener.Accept()
+	/*
+		listener, err := net.Listen("tcp", "localhost:8888")
 		if err != nil {
 			panic(err)
 		}
-		go processSessionWithPipelining(conn)
+		fmt.Println("Server is running at localhost:8888")
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				panic(err)
+			}
+			go processSessionWithPipelining(conn)
+		}
+	*/
+
+	// パイプライニングのクライアント実装
+	// まずリクエストだけを先行して全て送り、そのあと、結果を一つずつ読み込んで表示する
+	// レスポンスをダンプするのにリクエストが必要なため、後から取得できるようにパイプを使っている
+	sendMessages := []string{
+		"ASCII",
+		"PROGRAMMING",
+		"PLUS",
+	}
+	current := 0
+	var conn net.Conn = nil
+	requests := make(chan *http.Request, len(sendMessages))
+	conn, err := net.Dial("tcp", "ascii.jp:80")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("Access: %d\n", current)
+	defer func() {
+		if err := conn.Close(); err != nil {
+			panic(err)
+		}
+	}()
+
+	// リクエストだけ先に送る
+	for i := 0; i < len(sendMessages); i++ {
+		lastMessage := i == len(sendMessages)-1
+		request, err := http.NewRequest(
+			"GET",
+			"http://localhost:8888?message="+sendMessages[i],
+			nil,
+		)
+		if err != nil {
+			panic(err)
+		}
+		if lastMessage {
+			request.Header.Add("Connection", "close")
+		} else {
+			request.Header.Add("Connection", "keep-alive")
+		}
+		if err := request.Write(conn); err != nil {
+			panic(err)
+		}
+		fmt.Println("send: ", sendMessages[i])
+		requests <- request
+	}
+	close(requests)
+
+	// レスポンスをまとめて受信
+	reader := bufio.NewReader(conn)
+	for request := range requests {
+		response, err := http.ReadResponse(reader, request)
+		if err != nil {
+			panic(err)
+		}
+		dump, err := httputil.DumpResponse(response, true)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println(string(dump))
+		if current == len(sendMessages) {
+			break
+		}
 	}
 }
 
