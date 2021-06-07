@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"runtime"
 	"sync"
 	"time"
 )
@@ -79,6 +80,29 @@ func main() {
 	fmt.Println("どん")
 	cond.Broadcast()
 	time.Sleep(time.Second)
+
+	// sync.Poolはオブジェクトのキャッシュを実現する構造体
+	// 一時的な状態を保持する構造体をプールしておいてgoroutine間でシェアできる
+	// キャッシュでしかないので、ガベージコレクタが移動すると保持しているデータが削除される
+	var count int
+	pool := sync.Pool{
+		New: func() interface{} {
+			count++
+			return fmt.Sprintf("created: %d", count)
+		},
+	}
+
+	// 追加した要素から受け取れる
+	pool.Put("manually add: 1")
+	pool.Put("manually add: 2")
+	fmt.Println(pool.Get())
+	fmt.Println(pool.Get())
+	// プールが空だと新規作成
+	fmt.Println(pool.Get())
+	pool.Put("manually add: 3")
+	// GCを呼ぶと消える
+	runtime.GC()
+	fmt.Println(pool.Get())
 }
 
 func initialize() {
