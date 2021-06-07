@@ -103,6 +103,24 @@ func main() {
 	// GCを呼ぶと消える
 	runtime.GC()
 	fmt.Println(pool.Get())
+
+	// mapでは大量のgoroutineからアクセスする場合、mapの外側でロックすることにより操作するgoroutineを1個に限定しなければ問題が発生する
+	// sync.Mapはそのロックをないほうし、複数のgoroutineからアクセスされても壊れないことを保証している
+	smap := &sync.Map{}
+	// interface{}
+	smap.Store("hello", "world")
+	smap.Store(1, 2)
+	value, ok := smap.Load("hello")
+	fmt.Printf("key=%v value=%v exists?=%v\n", "hello", value, ok)
+
+	// キーが登録されていたら過去のデータを、登録されていなければ新しい値を登録する
+	smap.LoadOrStore(1, 3)
+	smap.LoadOrStore(2, 4)
+
+	smap.Range(func(key, value interface{}) bool {
+		fmt.Printf("%v: %v\n", key, value)
+		return true
+	})
 }
 
 func initialize() {
