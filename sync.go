@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -121,8 +122,17 @@ func main() {
 		fmt.Printf("%v: %v\n", key, value)
 		return true
 	})
+
+	// sync/atomicは不可分操作
+	// CPUレベルで提供されている1つで複数の操作を同時に行う命令を駆使したり、それが提供されていない場合は正しく処理が行われるまでループするという命令を駆使することでコンテキストスイッチが入って操作が失敗しないことが保証される
+	fmt.Println(generateIDWithAtomic(&mutex))
 }
 
 func initialize() {
 	fmt.Println("initialize")
+}
+
+var idAtomic int64
+func generateIDWithAtomic(mutex *sync.Mutex) int64 {
+	return atomic.AddInt64(&idAtomic, 1)
 }
