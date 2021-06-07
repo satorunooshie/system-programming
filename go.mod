@@ -10,5 +10,6 @@ require (
 	github.com/reactivex/rxgo v1.0.1 // indirect
 	github.com/stretchr/testify v1.7.0 // indirect
 	github.com/tmc/keyring v0.0.0-20171121202319-839169085ae1 // indirect
+	golang.org/x/crypto v0.0.0-20210513164829-c07d793c2f9a // indirect
 	golang.org/x/sys v0.0.0-20210603125802-9665404d3644 // indirect
 )
