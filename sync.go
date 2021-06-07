@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"sync"
+	"time"
 )
 
 var id int
@@ -56,6 +57,28 @@ func main() {
 	once.Do(initialize)
 	once.Do(initialize)
 	once.Do(initialize)
+
+	// sync.Condは条件変数と呼ばれる排他制御の仕組み
+	// 1. 先に終わらせなければいけないタスクがあり、それが完了したら待ってる全てのgoroutineに通知する(Broadcast())
+	// 2. リソースの準備が出来次第、そのリソースを待っているgoroutineに通知する(Signal())(channelで足りる)
+	// チャネルの場合は待っている全てのgoroutineに通知するとしたらクローズするしかないため、一度きりの通知にしか使えない
+	// sync.Condであれば、何度も使える、また、通知を受け取るgoroutineの数が0でも複数であっても同じように扱える
+	cond := sync.NewCond(&mutex)
+	for _, name := range []string{"A", "B", "C"} {
+		go func(name string) {
+			// Lockしてからwaitメソッドを呼ぶ
+			mutex.Lock()
+			defer mutex.Unlock()
+			// Broadcast()が呼ばれるまで待つ
+			cond.Wait()
+			fmt.Println(name)
+		}(name)
+	}
+	fmt.Println("よーい")
+	time.Sleep(time.Second)
+	fmt.Println("どん")
+	cond.Broadcast()
+	time.Sleep(time.Second)
 }
 
 func initialize() {
